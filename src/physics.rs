@@ -1,8 +1,9 @@
 pub mod physics {
 
-    use crate::{constant, object::object_mod::NewVelocity};
-    use crate::constant::constant::{BALL_RADIUS, CHOC_RESTITUTION};
+    use crate::constant::constant::{BALL_RADIUS, CHOC_RESTITUTION, DAMPING_COEFF};
     use crate::object;
+    use crate::object::object_mod::JMesh;
+    use crate::{constant, object::object_mod::NewVelocity};
 
     use raylib::prelude::Vector2;
     use raylib::prelude::*;
@@ -19,6 +20,18 @@ pub mod physics {
         Vector2 {
             x: v1.x + v2.x,
             y: v1.y + v2.y,
+        }
+    }
+
+    pub fn normalize_vector(v: &Vector2) -> Vector2 {
+        let length = (v.x * v.x + v.y * v.y).sqrt();
+        if length != 0.0 {
+            Vector2 {
+                x: v.x / length,
+                y: v.y / length,
+            }
+        } else {
+            Vector2 { x: 0.0, y: 0.0 }
         }
     }
 
@@ -60,7 +73,10 @@ pub mod physics {
         );
     }
 
-    pub fn are_colliding(ball1: &object::object_mod::Ball, ball2: &object::object_mod::Ball) -> bool {
+    pub fn are_colliding(
+        ball1: &object::object_mod::Ball,
+        ball2: &object::object_mod::Ball,
+    ) -> bool {
         let dx = ball1.position.x - ball2.position.x;
         let dy = ball1.position.y - ball2.position.y;
         let distance = (dx * dx + dy * dy).sqrt();
@@ -121,4 +137,54 @@ pub mod physics {
             },
         )
     }
+
+    pub fn apply_spring_forces(jmesh: &mut JMesh) {
+    // Create a temporary vector to store the changes in acceleration
+    let mut acceleration_changes: Vec<Vector2> = vec![Vector2 { x: 0.0, y: 0.0 }; jmesh.balls.len()];
+
+    for spring in &jmesh.springs {
+        let ball1 = &jmesh.balls[spring.ball1_index];
+        let ball2 = &jmesh.balls[spring.ball2_index];
+
+        let relative_velocity = ball2.velocity - ball1.velocity;
+        let damping_force = -relative_velocity * DAMPING_COEFF;
+
+        let displacement_vector = ball2.position - ball1.position;
+        let distance = displacement_vector.length();
+        let force_magnitude = spring.stiffness * (distance - spring.rest_length);
+        let force_direction = normalize_vector(&displacement_vector);
+
+        let force = force_direction * force_magnitude + damping_force;
+
+        // Store the change in acceleration
+        acceleration_changes[spring.ball1_index] += force / ball1.mass;
+        acceleration_changes[spring.ball2_index] -= force / ball2.mass;
+    }
+
+    // Apply the acceleration changes
+    for (ball, acc_change) in jmesh.balls.iter_mut().zip(acceleration_changes.iter()) {
+        ball.acceleration += *acc_change;
+    }
+}
+
+
+
+    pub fn update_physics(jmesh: &mut JMesh, dt: f32) {
+    // Apply forces from springs
+    apply_spring_forces(jmesh);
+    apply_air_drag(jmesh, 0.97);
+    // Update positions and velocities of balls using RK4
+    for ball in &mut jmesh.balls {
+        rk4_step(ball, dt);
+    }
+}
+
+pub fn apply_air_drag(jmesh: &mut JMesh, drag_coefficient: f32) {
+    for ball in &mut jmesh.balls {
+        let speed = ball.velocity.length();
+        let drag_force = -normalize_vector(&ball.velocity) * drag_coefficient * speed * speed;
+        ball.acceleration += drag_force / ball.mass;
+    }
+}
+
 }

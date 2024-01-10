@@ -1,40 +1,33 @@
 //mod
-mod object;
 mod constant;
+mod object;
 mod physics;
 
-use constant::constant::{SCREEN_HEIGHT, SCREEN_WIDTH, UPDATE_TIME_STEP, BALL_RADIUS, CHOC_RESTITUTION};
-use object::object_mod::NewVelocity;
-use physics::physics::{rk4_step, are_colliding, calculate_new_velocities};
+use constant::constant::{
+    BALL_RADIUS, CHOC_RESTITUTION, SCREEN_HEIGHT, SCREEN_WIDTH, UPDATE_TIME_STEP,
+};
+use object::object_mod::{create_cube_mesh, NewVelocity};
+use physics::physics::{are_colliding, calculate_new_velocities, rk4_step, update_physics};
 //use
 use raylib::prelude::Vector2;
 use raylib::prelude::*;
 use std::time::{Duration, Instant};
 
 fn main() {
+    let mut cube1 = create_cube_mesh(
+        200,
+        200,
+        3,
+        3,
+        1.0,
+        Vector2 { x: 100.0, y: 0.0 },
+        Vector2 { x: 100.0, y: 100.0 },
+        2,
+    );
+
     //VEC of Ball
 
     let mut balls: Vec<object::object_mod::Ball> = Vec::new();
-    balls.push(object::object_mod::Ball {
-        position: Vector2 {
-            x: (100) as f32,
-            y: ((SCREEN_HEIGHT / 2)) as f32,
-        },
-        velocity: Vector2 { x: 400.0, y: 0.0 },
-        acceleration: Vector2 { x: 0.0, y: 0.0 },
-        mass: 10.0,
-    });
-
-    balls.push(object::object_mod::Ball {
-        position: Vector2 {
-            x: (500) as f32,
-            y: ((SCREEN_HEIGHT / 2) + 0) as f32,
-        },
-        velocity: Vector2 { x: 0.0, y: 0.0 },
-        acceleration: Vector2 { x: 0.0, y: 0.0 },
-        mass: 1.0,
-    });
-
 
     let mut last_update_time = Instant::now();
     let mut lag = 0.0;
@@ -53,51 +46,12 @@ fn main() {
         let mut d = rl.begin_drawing(&thread);
 
         while lag >= UPDATE_TIME_STEP {
-            let mut new_velocities: Vec<NewVelocity> = balls
-                .iter()
-                .map(|ball| NewVelocity {
-                    vx: ball.velocity.x,
-                    vy: ball.velocity.y,
-                })
-                .collect();
 
-            // Collision detection and velocity calculation
-            for i in 0..balls.len() {
-                for j in i + 1..balls.len() {
-                    if are_colliding(&balls[i], &balls[j]) {
-                        let (new_vel_i, new_vel_j) = calculate_new_velocities(&balls[i], &balls[j]);
-                        new_velocities[i] = new_vel_i;
-                        new_velocities[j] = new_vel_j;
-                    }
-                }
+            if d.is_key_pressed(KeyboardKey::KEY_SPACE) {
+                cube1.balls[0].acceleration += Vector2{x: 2000.0, y: 0.0};
             }
 
-            // Apply the new velocities
-            for (ball, new_velocity) in balls.iter_mut().zip(new_velocities.iter()) {
-                ball.velocity.x = new_velocity.vx;
-                ball.velocity.y = new_velocity.vy;
-            }
-            // Update game logic here
-            for i in 0..balls.len() {
-                rk4_step(&mut balls[i], UPDATE_TIME_STEP);
-
-                if balls[i].position.x <= 0.0 + BALL_RADIUS as f32 + 0.01 {
-                    balls[i].velocity.x *= -1.0;
-                    balls[i].position.x = 0.01 + BALL_RADIUS as f32;
-                }
-                if balls[i].position.x >= (SCREEN_WIDTH - BALL_RADIUS) as f32 - 0.01 {
-                    balls[i].velocity.x *= -1.0;
-                    balls[i].position.x = SCREEN_WIDTH as f32 - 0.01 - BALL_RADIUS as f32;
-                }
-                if balls[i].position.y <= 0.0 + BALL_RADIUS as f32 + 0.01 {
-                    balls[i].velocity.y *= -1.0;
-                    balls[i].position.y = 0.01 + BALL_RADIUS as f32;
-                }
-                if balls[i].position.y >= (SCREEN_HEIGHT - BALL_RADIUS) as f32 - 0.01 {
-                    balls[i].velocity.y *= -1.0;
-                    balls[i].position.y = SCREEN_HEIGHT as f32 - 0.01 - BALL_RADIUS as f32;
-                }
-            }
+            update_physics(&mut cube1, UPDATE_TIME_STEP);
 
             lag -= UPDATE_TIME_STEP;
         }
@@ -115,6 +69,55 @@ fn main() {
             d.draw_circle(
                 balls[i].position.x as i32,
                 balls[i].position.y as i32,
+                BALL_RADIUS as f32,
+                Color::WHITE,
+            );
+        }
+
+        for spring in &cube1.springs {
+            let ball1 = &cube1.balls[spring.ball1_index];
+            let ball2 = &cube1.balls[spring.ball2_index];
+
+            // Calculate current length and compare with rest length
+            let current_length = (ball2.position - ball1.position).length();
+            let delta_length = current_length - spring.rest_length;
+
+            // Determine color based on the state of the spring
+            let color = if delta_length < 0.0 {
+                // Compressed: More red for more compression
+                Color::new(
+                    255,
+                    (255.0 * (1.0 + delta_length / spring.rest_length)) as u8,
+                    0,
+                    255,
+                )
+            } else if delta_length > 0.0 {
+                // Stretched: More blue for more stretching
+                Color::new(
+                    0,
+                    (255.0 * (1.0 - delta_length / spring.rest_length)) as u8,
+                    255,
+                    255,
+                )
+            } else {
+                // At rest: Green
+                Color::new(0, 255, 0, 255)
+            };
+
+            // Draw the spring as a line
+            d.draw_line(
+                ball1.position.x as i32,
+                ball1.position.y as i32,
+                ball2.position.x as i32,
+                ball2.position.y as i32,
+                color,
+            );
+        }
+
+        for i in 0..cube1.balls.len() {
+            d.draw_circle(
+                cube1.balls[i].position.x as i32,
+                cube1.balls[i].position.y as i32,
                 BALL_RADIUS as f32,
                 Color::WHITE,
             );
