@@ -18,16 +18,16 @@ const BALL_RADIUS: i32 = 10;
 const SCREEN_WIDTH: i32 = 1000;
 const SCREEN_HEIGHT: i32 = 800;
 
-const UPDATES_PER_SECOND: u64 = 16000;
+const UPDATES_PER_SECOND: u64 = 1600;
 const UPDATE_TIME_STEP: f32 = 1.0 / UPDATES_PER_SECOND as f32;
 
-const CHOC_RESTITUTION:f32 = 0.5;
+const CHOC_RESTITUTION:f32 = 1.0;
 
 fn main() {
     //VEC of Ball
 
-    let mut balls: Vec<Ball::BallMod::Ball> = Vec::new();
-    balls.push(Ball::BallMod::Ball {
+    let mut balls: Vec<Ball::object_mod::Ball> = Vec::new();
+    balls.push(Ball::object_mod::Ball {
         position: Vector2 {
             x: (100) as f32,
             y: ((SCREEN_HEIGHT / 2)) as f32,
@@ -37,7 +37,7 @@ fn main() {
         mass: 10.0,
     });
 
-    balls.push(Ball::BallMod::Ball {
+    balls.push(Ball::object_mod::Ball {
         position: Vector2 {
             x: (500) as f32,
             y: ((SCREEN_HEIGHT / 2) + 0) as f32,
@@ -150,17 +150,17 @@ fn add_vector2(v1: &Vector2, v2: &Vector2) -> Vector2 {
     }
 }
 
-fn rk4_step(ball: &mut Ball::BallMod::Ball, dt: f32) {
+fn rk4_step(ball: &mut Ball::object_mod::Ball, dt: f32) {
     let k1_vel = scale_vector2(&ball.acceleration, dt);
     let k1_pos = scale_vector2(&ball.velocity, dt);
 
-    let mid_velocity = add_vector2(&ball.velocity, &scale_vector2(&k1_vel, 0.5));
+    let mid_velocity1 = add_vector2(&ball.velocity, &scale_vector2(&k1_vel, 0.5));
     let k2_vel = scale_vector2(&ball.acceleration, dt);
-    let k2_pos = scale_vector2(&mid_velocity, dt);
+    let k2_pos = scale_vector2(&mid_velocity1, dt);
 
-    let mid_velocity = add_vector2(&ball.velocity, &scale_vector2(&k2_vel, 0.5));
+    let mid_velocity2 = add_vector2(&ball.velocity, &scale_vector2(&k2_vel, 0.5));
     let k3_vel = scale_vector2(&ball.acceleration, dt);
-    let k3_pos = scale_vector2(&mid_velocity, dt);
+    let k3_pos = scale_vector2(&mid_velocity2, dt);
 
     let end_velocity = add_vector2(&ball.velocity, &k3_vel);
     let k4_vel = scale_vector2(&ball.acceleration, dt);
@@ -171,7 +171,13 @@ fn rk4_step(ball: &mut Ball::BallMod::Ball, dt: f32) {
         &scale_vector2(
             &add_vector2(
                 &k1_pos,
-                &scale_vector2(&add_vector2(&k2_pos, &scale_vector2(&k3_pos, 2.0)), 2.0),
+                &add_vector2(
+                    &scale_vector2(&k2_pos, 2.0),
+                    &add_vector2(
+                        &scale_vector2(&k3_pos, 2.0),
+                        &k4_pos,
+                    ),
+                ),
             ),
             1.0 / 6.0,
         ),
@@ -181,14 +187,21 @@ fn rk4_step(ball: &mut Ball::BallMod::Ball, dt: f32) {
         &scale_vector2(
             &add_vector2(
                 &k1_vel,
-                &scale_vector2(&add_vector2(&k2_vel, &scale_vector2(&k3_vel, 2.0)), 2.0),
+                &add_vector2(
+                    &scale_vector2(&k2_vel, 2.0),
+                    &add_vector2(
+                        &scale_vector2(&k3_vel, 2.0),
+                        &k4_vel,
+                    ),
+                ),
             ),
             1.0 / 6.0,
         ),
     );
 }
 
-fn are_colliding(ball1: &Ball::BallMod::Ball, ball2: &Ball::BallMod::Ball) -> bool {
+
+fn are_colliding(ball1: &Ball::object_mod::Ball, ball2: &Ball::object_mod::Ball) -> bool {
     let dx = ball1.position.x - ball2.position.x;
     let dy = ball1.position.y - ball2.position.y;
     let distance = (dx * dx + dy * dy).sqrt();
@@ -197,7 +210,7 @@ fn are_colliding(ball1: &Ball::BallMod::Ball, ball2: &Ball::BallMod::Ball) -> bo
 }
 
 
-fn calculate_new_velocities(ball1: &Ball::BallMod::Ball, ball2: &Ball::BallMod::Ball) -> (NewVelocity, NewVelocity) {
+fn calculate_new_velocities(ball1: &Ball::object_mod::Ball, ball2: &Ball::object_mod::Ball) -> (NewVelocity, NewVelocity) {
     let dx = ball1.position.x - ball2.position.x;
     let dy = ball1.position.y - ball2.position.y;
     let distance = (dx * dx + dy * dy).sqrt();
@@ -221,11 +234,8 @@ fn calculate_new_velocities(ball1: &Ball::BallMod::Ball, ball2: &Ball::BallMod::
         );
     }
 
-    // Calculate restitution (elasticity)
-    let restitution = CHOC_RESTITUTION; // perfectly elastic collision
-
     // Calculate impulse scalar
-    let impulse = (2.0 * dot) / (ball1.mass + ball2.mass);
+    let impulse = ((1.0 + CHOC_RESTITUTION) * dot) / (ball1.mass + ball2.mass);
 
     // Calculate new velocities
     let new_vx_ball1 = ball1.velocity.x - impulse * ball2.mass * nx;
